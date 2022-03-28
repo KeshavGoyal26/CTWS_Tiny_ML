@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Google+Sans:400,500,700">
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/tasks@0.0.1-alpha.8"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-tflite@0.0.1-alpha.6/dist/tf-tflite.min.js"></script>
+  <title>Document</title>
+  <style>
+    body {
+      font-family: 'Google Sans';
+    }
+
+    .container {
+      display: flex;
+    }
+
+    .img-container {
+      position: relative;
+    }
+
+    img {
+      height: 250px;
+      border-radius: 8px;
+    }
+
+    .boxes-container {
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 100%;
+
+      position: absolute;
+    }
+
+    .buttons {
+      margin-left: 20px;
+    }
+
+    .model {
+      display: flex;
+      align-items: center;
+    }
+
+    .result {
+      margin-left: 20px;
+    }
+
+    .btn {
+      border: 1px solid #888;
+      cursor: pointer;
+      width: 150px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 10px 0;
+    }
+
+    .btn.disabled {
+      color: #bbb;
+      border-color: #bbb;
+      pointer-events: none;
+    }
+
+    .btn:hover {
+      background-color: #eee;
+    }
+
+    .box-container {
+      position: absolute;
+    }
+
+    .box {
+      border: 2px solid red;
+    }
+
+    .label {
+      background-color: red;
+      color: white;
+      height: 18px;
+      line-height: 18px;
+      position: absolute;
+      top: -16px;
+      white-space: nowrap;
+      padding: 0 5px;
+      font-size: 12px;
+      display: none;
+    }
+
+    .box-container:hover .label {
+      display: block;
+    }
+
+    .msg {
+      visibility: hidden;
+      font-size: 14px;
+    }
+
+    .msg.show {
+      visibility: visible;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="img-container">
+      <img
+        src="https://media.istockphoto.com/photos/cat-and-dog-buddies-with-orange-background-picture-id172974164?k=20&m=172974164&s=612x612&w=0&h=88FyXEpFXNJjCMYMFVl3qEQZLRwx7M0v0NQ8aSylNxU=" alt="Please, Upload Image or Press Change Image"
+        style="width: 600px; height : 600px" crossorigin="anonymous" id="myImg">
+      <div class="boxes-container"></div>
+    </div>
+
+    <div class="buttons">
+      <div class="model tflite">
+        <div class="btn disabled">Predict</div>
+        <div class="result"></div>
+      </div>
+      <div>
+        <div class="btn chng">Change image</div>
+      </div>
+      <div>
+        <div>Upload Image</div>
+        <div class="upld">
+          <form runat="server">
+            <input accept="image/*" type='file' id="imgInp" />
+            <!-- <img id="blah" src="#" alt="your image" /> -->
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+
+    image_urls = [
+      "https://st3.depositphotos.com/10162734/i/600/depositphotos_190705384-stock-photo-a-skateboarder-teenager-in-a.jpg",
+
+      "https://images.unsplash.com/photo-1598755257130-c2aaca1f061c?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxzZWFyY2h8Mnx8d2lsZCUyMGFuaW1hbHxlbnwwfHwwfHw%3D&w=1000&q=80",
+
+      "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0d/Biblioteca_Maim%C3%B3nides%2C_Campus_Universitario_de_Rabanales_007.jpg/1024px-Biblioteca_Maim%C3%B3nides%2C_Campus_Universitario_de_Rabanales_007.jpg",
+
+      "https://upload.wikimedia.org/wikipedia/commons/7/7d/Gallant_Man.jpg",
+
+      "https://rukminim2.flixcart.com/image/416/416/kkwwu4w0/fruit-vegetable-basket/2/h/u/3-tier-fruit-vegetables-basket-for-kitchen-fruit-basket-for-original-imagy5h75eczcvp8.jpeg?q=70",
+
+      "https://images.unsplash.com/photo-1520975661595-6453be3f7070?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxzZWFyY2h8M3x8bWFuJTIwd2l0aCUyMGNhcnxlbnwwfHwwfHw%3D&w=1000&q=80",
+
+      "https://m.media-amazon.com/images/I/71HhOh1gbAL._AC_SY679_.jpg",
+
+    ]
+    const img = document.querySelector("img");
+    let i = 0;
+    let lastModel;
+    let lastClassName;
+    let warmedUp = false;
+
+    setupButton(
+      "tflite",
+      async () => await tfTask.ObjectDetection.CocoSsd.TFLite.load()
+    );
+
+    document.querySelector('.chng').addEventListener("click", async () => {
+      img.src = image_urls[i];
+      i++;
+      i = i % image_urls.length;
+      document.querySelector('.boxes-container').innerHTML = "";
+    })
+
+    imgInp.onchange = evt => {
+      const [file] = imgInp.files
+      if (file) {
+        img.src = URL.createObjectURL(file)
+      }
+      document.querySelector('.boxes-container').innerHTML = "";
+    }
+
+    async function setupButton(className, modelCreateFn, needWarmup) {
+      document
+        .querySelector(`.model.${className} .btn`)
+        .classList.remove("disabled");
+      const resultEle = document.querySelector(`.model.${className} .result`);
+      document
+        .querySelector(`.model.${className} .btn`)
+        .addEventListener("click", async () => {
+          let model;
+          // Create the model when user clicks on a button.
+
+          resultEle.textContent = "Loading...";
+          model = await modelCreateFn();
+
+          // Warm up if needed.
+          if (needWarmup && !warmedUp) {
+            await model.predict(img);
+            warmedUp = true;
+          }
+
+          // Run inference and update result.
+          const start = Date.now();
+          const result = await model.predict(img);
+          const latency = Date.now() - start;
+          renderDetectionResult(result);
+          resultEle.textContent = `Latency: ${latency}ms`;
+        });
+    }
+
+    /** Render detection results. */
+    function renderDetectionResult(result) {
+      const boxesContainer = document.querySelector(".boxes-container");
+      boxesContainer.innerHTML = "";
+      const objects = result.objects;
+      for (let i = 0; i < Math.min(5, objects.length); i++) {
+        const curObject = objects[i];
+        const boundingBox = curObject.boundingBox;
+        const name = curObject.className;
+        const score = curObject.score;
+
+        const boxContainer = createDetectionResultBox(
+          boundingBox.originX,
+          boundingBox.originY,
+          boundingBox.width,
+          boundingBox.height,
+          name,
+          score
+        );
+        boxesContainer.appendChild(boxContainer);
+      }
+    }
+
+    /** Create a single detection result box. */
+    function createDetectionResultBox(left, top, width, height, name, score) {
+      const container = document.createElement("div");
+      container.classList.add("box-container");
+
+      const box = document.createElement("div");
+      box.classList.add("box");
+      container.appendChild(box);
+
+      const label = document.createElement("div");
+      label.classList.add("label");
+      label.textContent = `${name} (${score.toFixed(2)})`;
+      container.appendChild(label);
+
+      container.style.left = `${left - 1}px`;
+      container.style.top = `${top - 1}px`;
+      box.style.width = `${width + 1}px`;
+      box.style.height = `${height + 1}px`;
+
+      return container;
+    }
+
+  </script>
+</body>
+
+</html>
